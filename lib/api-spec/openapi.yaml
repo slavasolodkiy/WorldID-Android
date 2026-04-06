@@ -3,13 +3,24 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: World App API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: identity
+    description: World ID and identity operations
+  - name: wallet
+    description: Wallet and token operations
+  - name: transactions
+    description: Transaction history
+  - name: mini-apps
+    description: Mini apps marketplace
+  - name: grants
+    description: WLD grants and rewards
+
 paths:
   /healthz:
     get:
@@ -24,6 +35,300 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /identity:
+    get:
+      operationId: getIdentity
+      tags: [identity]
+      summary: Get current user identity
+      description: Returns the current user's World ID and verification status
+      responses:
+        "200":
+          description: User identity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Identity"
+
+  /identity/verify:
+    post:
+      operationId: initiateVerification
+      tags: [identity]
+      summary: Initiate identity verification
+      description: Start the Orb verification process
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitiateVerificationBody"
+      responses:
+        "200":
+          description: Verification initiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationSession"
+
+  /identity/credentials:
+    get:
+      operationId: getCredentials
+      tags: [identity]
+      summary: Get user credentials
+      description: Returns all verified credentials for the user
+      responses:
+        "200":
+          description: User credentials
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Credential"
+
+  /wallet:
+    get:
+      operationId: getWallet
+      tags: [wallet]
+      summary: Get wallet overview
+      description: Returns wallet balances and portfolio summary
+      responses:
+        "200":
+          description: Wallet data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+
+  /wallet/tokens:
+    get:
+      operationId: getTokens
+      tags: [wallet]
+      summary: Get token balances
+      description: Returns all token balances in the wallet
+      responses:
+        "200":
+          description: Token balances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Token"
+
+  /wallet/send:
+    post:
+      operationId: sendTokens
+      tags: [wallet]
+      summary: Send tokens
+      description: Send WLD or USDC tokens to another address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendTokensBody"
+      responses:
+        "200":
+          description: Transaction initiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+
+  /wallet/receive:
+    get:
+      operationId: getReceiveInfo
+      tags: [wallet]
+      summary: Get receive info
+      description: Get the wallet address and QR code info for receiving tokens
+      responses:
+        "200":
+          description: Receive info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiveInfo"
+
+  /transactions:
+    get:
+      operationId: getTransactions
+      tags: [transactions]
+      summary: Get transaction history
+      description: Returns paginated transaction history
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [send, receive, grant, swap]
+      responses:
+        "200":
+          description: Transaction history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionList"
+
+  /transactions/summary:
+    get:
+      operationId: getTransactionSummary
+      tags: [transactions]
+      summary: Get transaction summary
+      description: Returns aggregated transaction stats
+      responses:
+        "200":
+          description: Transaction summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionSummary"
+
+  /mini-apps:
+    get:
+      operationId: getMiniApps
+      tags: [mini-apps]
+      summary: Get mini apps
+      description: Returns available mini apps in the marketplace
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: featured
+          in: query
+          schema:
+            type: boolean
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Mini apps list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MiniApp"
+
+  /mini-apps/categories:
+    get:
+      operationId: getMiniAppCategories
+      tags: [mini-apps]
+      summary: Get mini app categories
+      description: Returns all available categories
+      responses:
+        "200":
+          description: Categories list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+
+  /mini-apps/{id}:
+    get:
+      operationId: getMiniApp
+      tags: [mini-apps]
+      summary: Get mini app details
+      description: Returns details about a specific mini app
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Mini app details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MiniApp"
+
+  /mini-apps/{id}/launch:
+    post:
+      operationId: launchMiniApp
+      tags: [mini-apps]
+      summary: Launch mini app
+      description: Record that the user launched a mini app
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Launch recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LaunchResult"
+
+  /grants:
+    get:
+      operationId: getGrants
+      tags: [grants]
+      summary: Get available grants
+      description: Returns WLD grants and rewards available for the user
+      responses:
+        "200":
+          description: Grants list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Grant"
+
+  /grants/claim:
+    post:
+      operationId: claimGrant
+      tags: [grants]
+      summary: Claim a grant
+      description: Claim a WLD grant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimGrantBody"
+      responses:
+        "200":
+          description: Grant claimed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimResult"
+
+  /stats:
+    get:
+      operationId: getStats
+      tags: [health]
+      summary: Get global stats
+      description: Returns World app global statistics
+      responses:
+        "200":
+          description: Global stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalStats"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +339,407 @@ components:
       required:
         - status
 
+    Identity:
+      type: object
+      properties:
+        id:
+          type: string
+        worldId:
+          type: string
+        username:
+          type: string
+        avatarUrl:
+          type: string
+        verificationLevel:
+          type: string
+          enum: [none, device, orb]
+        isVerified:
+          type: boolean
+        nullifierHash:
+          type: string
+        walletAddress:
+          type: string
+        joinedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - worldId
+        - username
+        - verificationLevel
+        - isVerified
+        - walletAddress
+        - joinedAt
+
+    InitiateVerificationBody:
+      type: object
+      properties:
+        level:
+          type: string
+          enum: [device, orb]
+      required:
+        - level
+
+    VerificationSession:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        level:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+      required:
+        - sessionId
+        - status
+        - level
+        - expiresAt
+
+    Credential:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [orb, device, phone]
+        label:
+          type: string
+        issuedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        isActive:
+          type: boolean
+      required:
+        - id
+        - type
+        - label
+        - issuedAt
+        - isActive
+
+    Wallet:
+      type: object
+      properties:
+        address:
+          type: string
+        totalValueUsd:
+          type: number
+        change24hPercent:
+          type: number
+        change24hUsd:
+          type: number
+        tokens:
+          type: array
+          items:
+            $ref: "#/components/schemas/Token"
+      required:
+        - address
+        - totalValueUsd
+        - change24hPercent
+        - change24hUsd
+        - tokens
+
+    Token:
+      type: object
+      properties:
+        symbol:
+          type: string
+        name:
+          type: string
+        balance:
+          type: number
+        balanceUsd:
+          type: number
+        priceUsd:
+          type: number
+        change24hPercent:
+          type: number
+        iconUrl:
+          type: string
+        contractAddress:
+          type: string
+        chain:
+          type: string
+      required:
+        - symbol
+        - name
+        - balance
+        - balanceUsd
+        - priceUsd
+        - change24hPercent
+        - chain
+
+    SendTokensBody:
+      type: object
+      properties:
+        toAddress:
+          type: string
+        amount:
+          type: number
+        token:
+          type: string
+        note:
+          type: string
+      required:
+        - toAddress
+        - amount
+        - token
+
+    ReceiveInfo:
+      type: object
+      properties:
+        address:
+          type: string
+        qrCodeData:
+          type: string
+        username:
+          type: string
+      required:
+        - address
+        - qrCodeData
+        - username
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [send, receive, grant, swap]
+        status:
+          type: string
+          enum: [pending, confirmed, failed]
+        amount:
+          type: number
+        amountUsd:
+          type: number
+        token:
+          type: string
+        fromAddress:
+          type: string
+        toAddress:
+          type: string
+        toUsername:
+          type: string
+        fromUsername:
+          type: string
+        txHash:
+          type: string
+        note:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - type
+        - status
+        - amount
+        - amountUsd
+        - token
+        - createdAt
+
+    TransactionList:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - transactions
+        - total
+        - page
+        - limit
+
+    TransactionSummary:
+      type: object
+      properties:
+        totalSentUsd:
+          type: number
+        totalReceivedUsd:
+          type: number
+        totalGrantsUsd:
+          type: number
+        transactionCount:
+          type: integer
+        thisMonthUsd:
+          type: number
+      required:
+        - totalSentUsd
+        - totalReceivedUsd
+        - totalGrantsUsd
+        - transactionCount
+        - thisMonthUsd
+
+    MiniApp:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        iconUrl:
+          type: string
+        category:
+          type: string
+        categoryLabel:
+          type: string
+        developer:
+          type: string
+        rating:
+          type: number
+        ratingCount:
+          type: integer
+        userCount:
+          type: integer
+        isVerified:
+          type: boolean
+        isFeatured:
+          type: boolean
+        tags:
+          type: array
+          items:
+            type: string
+        url:
+          type: string
+        screenshotUrls:
+          type: array
+          items:
+            type: string
+      required:
+        - id
+        - name
+        - description
+        - category
+        - categoryLabel
+        - developer
+        - rating
+        - ratingCount
+        - userCount
+        - isVerified
+        - isFeatured
+        - tags
+        - url
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        icon:
+          type: string
+        appCount:
+          type: integer
+      required:
+        - id
+        - label
+        - icon
+        - appCount
+
+    LaunchResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        url:
+          type: string
+      required:
+        - success
+        - url
+
+    Grant:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [world_id_grant, referral, airdrop, reward]
+        title:
+          type: string
+        description:
+          type: string
+        amountWld:
+          type: number
+        amountUsd:
+          type: number
+        status:
+          type: string
+          enum: [available, claimed, expired]
+        expiresAt:
+          type: string
+          format: date-time
+        requiresOrb:
+          type: boolean
+      required:
+        - id
+        - type
+        - title
+        - description
+        - amountWld
+        - amountUsd
+        - status
+        - requiresOrb
+
+    ClaimGrantBody:
+      type: object
+      properties:
+        grantId:
+          type: string
+      required:
+        - grantId
+
+    ClaimResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        amountWld:
+          type: number
+        amountUsd:
+          type: number
+        txHash:
+          type: string
+      required:
+        - success
+        - amountWld
+        - amountUsd
+
+    GlobalStats:
+      type: object
+      properties:
+        totalVerifiedHumans:
+          type: integer
+        totalCountries:
+          type: integer
+        totalMiniApps:
+          type: integer
+        totalWldDistributed:
+          type: number
+        monthlyActiveUsers:
+          type: integer
+      required:
+        - totalVerifiedHumans
+        - totalCountries
+        - totalMiniApps
+        - totalWldDistributed
+        - monthlyActiveUsers
