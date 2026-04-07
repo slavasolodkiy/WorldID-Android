@@ -1,0 +1,67 @@
+You are working only inside the WorldID-Android repository.
+
+If /reports/final-audit.md exists, read it first and use it as context. If it does not exist, infer from the codebase directly.
+
+Start with a plan, then implement in small checkpoints.
+
+Objective:
+Upgrade this repository from a broad but shallow product replica into a reusable, production-leaning Android product foundation, without redesigning the visible UI.
+
+Main goals:
+1. Remove single-user and hardcoded assumptions.
+2. Improve correctness of transactions, grants, verification, and mini-app related flows.
+3. Improve architecture clarity and platform-story consistency.
+4. Improve testing, CI, and reuse readiness.
+
+Tasks:
+1. Create or improve these files:
+   - README.md
+   - AGENTS.md (only if missing)
+   - docs/architecture.md
+   - docs/domain-model.md
+   - docs/auth-session-model.md
+   - docs/transactions-and-grants.md
+   - .env.example
+2. Remove brittle assumptions:
+   - remove single-user or hardcoded identity behavior
+   - document all remaining mocked/stubbed flows
+   - centralize configuration
+3. Strengthen authorization and ownership:
+   - enforce ownership rules on user-scoped data
+   - handle forbidden/unauthorized cases explicitly
+4. Harden transaction and grants logic:
+   - precise money/value representation
+   - validation rules
+   - balance/invariant checks
+   - atomicity and failure handling where relevant
+   - clear distinction between real flows and placeholder behavior
+5. Improve verification and mini-app flow integrity:
+   - define valid state transitions
+   - define required inputs and failure states
+   - remove misleading completeness if parts are only stubbed
+6. Improve technical clarity:
+   - align docs with actual stack and architecture
+   - if this repo is Android-inspired rather than truly native Android, state that clearly in docs
+   - reduce duplicated logic and improve module boundaries
+7. Improve quality baseline:
+   - add or improve migrations/seeds if relevant
+   - add integration tests for authz, transactions, grants, and failure paths
+   - add CI for typecheck/build/tests
+8. Produce a final report:
+   - docs/reuse-readiness-report.md
+   - include before/after summary
+   - list critical blockers still remaining
+   - include the next best prompt for another iteration
+
+Constraints:
+- Do not redesign visible UI.
+- Preserve route/screen structure where possible.
+- Do not add unnecessary dependencies.
+- Do not keep secrets or credentials in source.
+- Do not present the result as an official Android/World ID product.
+- Prefer minimal, high-leverage refactors over broad rewrites.
+
+Output requirements:
+- First show the implementation plan.
+- Then implement.
+- End with a concise changelog and a readiness delta.

@@ -1,14 +1,16 @@
-import { pgTable, text, serial, timestamp, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, numeric, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { identityTable } from "./identity";
 
 export const transactionsTable = pgTable("transactions", {
   id: serial("id").primaryKey(),
+  identityId: integer("identity_id").references(() => identityTable.id, { onDelete: "set null" }),
   txId: text("tx_id").notNull().unique(),
   type: text("type").notNull(),
   status: text("status").notNull().default("confirmed"),
-  amount: real("amount").notNull(),
-  amountUsd: real("amount_usd").notNull(),
+  amount: numeric("amount", { precision: 28, scale: 8 }).notNull(),
+  amountUsd: numeric("amount_usd", { precision: 18, scale: 6 }).notNull(),
   token: text("token").notNull(),
   fromAddress: text("from_address"),
   toAddress: text("to_address"),

@@ -1,39 +1,27 @@
 import { motion } from "framer-motion";
 import { useGetIdentity, useGetCredentials, useInitiateVerification } from "@workspace/api-client-react";
-import { Shield, ShieldCheck, CheckCircle, Clock, ExternalLink } from "lucide-react";
+import { Shield, ShieldCheck, CheckCircle, Clock, ExternalLink, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function OrbAnimation() {
   return (
     <div className="relative w-52 h-52 mx-auto flex items-center justify-center">
-      {/* Outer glow rings */}
       {[1, 2, 3].map((i) => (
         <motion.div
           key={i}
           className="absolute rounded-full border border-blue-500/20"
           style={{ width: `${60 + i * 35}px`, height: `${60 + i * 35}px` }}
-          animate={{
-            scale: [1, 1.08, 1],
-            opacity: [0.3, 0.6, 0.3],
-          }}
-          transition={{
-            duration: 3,
-            delay: i * 0.6,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
+          animate={{ scale: [1, 1.08, 1], opacity: [0.3, 0.6, 0.3] }}
+          transition={{ duration: 3, delay: i * 0.6, repeat: Infinity, ease: "easeInOut" }}
         />
       ))}
 
-      {/* Orb body */}
       <motion.div
         className="w-36 h-36 rounded-full relative overflow-hidden"
         animate={{ scale: [1, 1.03, 1] }}
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
       >
-        {/* Base gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-900 to-black rounded-full" />
-        {/* Iris rings */}
         {[0, 1, 2, 3].map((i) => (
           <motion.div
             key={i}
@@ -46,13 +34,11 @@ function OrbAnimation() {
             transition={{ duration: 12 + i * 4, repeat: Infinity, ease: "linear" }}
           />
         ))}
-        {/* Center pupil */}
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400/30 to-blue-900/80 flex items-center justify-center">
             <div className="w-5 h-5 rounded-full bg-blue-300/20 backdrop-blur-sm" />
           </div>
         </div>
-        {/* Highlight */}
         <div className="absolute top-3 left-5 w-8 h-4 bg-white/10 rounded-full blur-sm" />
         <div className="absolute top-4 left-6 w-4 h-2 bg-white/20 rounded-full" />
       </motion.div>
@@ -61,8 +47,8 @@ function OrbAnimation() {
 }
 
 export default function Identity() {
-  const { data: identity, isLoading } = useGetIdentity();
-  const { data: credentials } = useGetCredentials();
+  const { data: identity, isLoading, isError: identityError, refetch } = useGetIdentity();
+  const { data: credentials, isLoading: credsLoading } = useGetCredentials();
   const verifyMutation = useInitiateVerification();
 
   const handleVerify = () => {
@@ -80,7 +66,6 @@ export default function Identity() {
 
   return (
     <div className="min-h-full bg-background">
-      {/* Header */}
       <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl px-6 pt-12 pb-4 border-b border-border/30">
         <h1 className="text-2xl font-bold text-foreground">World ID</h1>
         <p className="text-xs text-muted-foreground mt-0.5">Proof of Personhood</p>
@@ -88,11 +73,7 @@ export default function Identity() {
 
       <div className="px-4 pt-6 pb-8 space-y-6">
         {/* Orb visual */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center"
-        >
+        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="text-center">
           <OrbAnimation />
           <motion.div
             initial={{ opacity: 0 }}
@@ -107,6 +88,15 @@ export default function Identity() {
             {lvl.label}
           </motion.div>
         </motion.div>
+
+        {/* Error state */}
+        {identityError && (
+          <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-2xl p-3.5">
+            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+            <p className="text-xs text-red-300 flex-1">Could not load identity data.</p>
+            <button onClick={() => refetch()} className="text-xs text-red-400 font-medium underline underline-offset-2">Retry</button>
+          </div>
+        )}
 
         {/* Identity card */}
         {isLoading ? (
@@ -145,12 +135,20 @@ export default function Identity() {
               )}
             </div>
           </motion.div>
-        ) : null}
+        ) : !identityError ? null : null}
 
         {/* Credentials */}
         <div>
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">Credentials</h2>
           <div className="space-y-2">
+            {credsLoading && [1].map((i) => (
+              <div key={i} className="h-16 bg-card/50 rounded-2xl animate-pulse border border-border/30" />
+            ))}
+            {!credsLoading && credentials?.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground text-sm">No credentials issued yet.</p>
+              </div>
+            )}
             {credentials?.map((cred, i) => (
               <motion.div
                 key={cred.id}
@@ -185,9 +183,6 @@ export default function Identity() {
                 )} />
               </motion.div>
             ))}
-            {!credentials && [1].map((i) => (
-              <div key={i} className="h-16 bg-card/50 rounded-2xl animate-pulse border border-border/30" />
-            ))}
           </div>
         </div>
 
@@ -210,6 +205,14 @@ export default function Identity() {
                 </p>
               </div>
             </div>
+
+            {verifyMutation.isError && (
+              <div className="mt-3 flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-2.5">
+                <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                <p className="text-xs text-red-300">Could not start verification session. Please try again.</p>
+              </div>
+            )}
+
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={handleVerify}

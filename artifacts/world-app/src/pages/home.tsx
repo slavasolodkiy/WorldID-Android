@@ -7,7 +7,7 @@ import {
   useGetGrants,
   useGetStats,
 } from "@workspace/api-client-react";
-import { ArrowUpRight, ArrowDownLeft, RefreshCw, TrendingUp, TrendingDown, ChevronRight, Zap } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft, RefreshCw, TrendingUp, TrendingDown, ChevronRight, Zap, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function formatUsd(val: number) {
@@ -18,10 +18,24 @@ function formatToken(val: number, decimals = 3) {
   return val.toLocaleString("en-US", { maximumFractionDigits: decimals });
 }
 
+function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-2xl p-3.5">
+      <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+      <p className="text-xs text-red-300 flex-1">{message}</p>
+      {onRetry && (
+        <button onClick={onRetry} className="text-xs text-red-400 font-medium hover:text-red-300 transition-colors underline underline-offset-2">
+          Retry
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
-  const { data: wallet, isLoading: walletLoading } = useGetWallet();
+  const { data: wallet, isLoading: walletLoading, isError: walletError, refetch: refetchWallet } = useGetWallet();
   const { data: identity } = useGetIdentity();
-  const { data: transactions } = useGetTransactions({ page: 1, limit: 5 });
+  const { data: transactions, isError: txError, refetch: refetchTx } = useGetTransactions({ page: 1, limit: 5 });
   const { data: grants } = useGetGrants();
   const { data: stats } = useGetStats();
 
@@ -29,7 +43,6 @@ export default function Home() {
 
   return (
     <div className="min-h-full bg-background">
-      {/* Header */}
       <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl px-6 pt-12 pb-4 border-b border-border/30">
         <div className="flex items-center justify-between">
           <div>
@@ -47,6 +60,10 @@ export default function Home() {
       </div>
 
       <div className="px-4 pt-6 pb-8 space-y-6">
+        {walletError && (
+          <ErrorBanner message="Could not load wallet balance." onRetry={() => refetchWallet()} />
+        )}
+
         {/* Balance Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -58,33 +75,33 @@ export default function Home() {
             <p className="text-xs text-muted-foreground font-medium tracking-widest uppercase mb-2">Total Balance</p>
             {walletLoading ? (
               <div className="h-10 bg-muted/30 rounded-xl animate-pulse w-48" />
+            ) : walletError ? (
+              <p className="text-4xl font-bold text-muted-foreground tracking-tight">—</p>
             ) : (
-              <motion.div
-                initial={{ scale: 0.9 }}
-                animate={{ scale: 1 }}
-                className="flex items-end gap-3"
-              >
+              <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="flex items-end gap-3">
                 <span className="text-4xl font-bold text-foreground tracking-tight">
                   {formatUsd(wallet?.totalValueUsd ?? 0)}
                 </span>
               </motion.div>
             )}
-            <div className={cn(
-              "flex items-center gap-1.5 mt-2",
-              (wallet?.change24hPercent ?? 0) >= 0 ? "text-green-400" : "text-red-400"
-            )}>
-              {(wallet?.change24hPercent ?? 0) >= 0 ? (
-                <TrendingUp className="w-3.5 h-3.5" />
-              ) : (
-                <TrendingDown className="w-3.5 h-3.5" />
-              )}
-              <span className="text-sm font-medium">
-                {(wallet?.change24hPercent ?? 0) >= 0 ? "+" : ""}{wallet?.change24hPercent?.toFixed(2)}% today
-              </span>
-              <span className="text-xs text-muted-foreground">
-                ({(wallet?.change24hUsd ?? 0) >= 0 ? "+" : ""}{formatUsd(wallet?.change24hUsd ?? 0)})
-              </span>
-            </div>
+            {!walletError && (
+              <div className={cn(
+                "flex items-center gap-1.5 mt-2",
+                (wallet?.change24hPercent ?? 0) >= 0 ? "text-green-400" : "text-red-400"
+              )}>
+                {(wallet?.change24hPercent ?? 0) >= 0 ? (
+                  <TrendingUp className="w-3.5 h-3.5" />
+                ) : (
+                  <TrendingDown className="w-3.5 h-3.5" />
+                )}
+                <span className="text-sm font-medium">
+                  {(wallet?.change24hPercent ?? 0) >= 0 ? "+" : ""}{wallet?.change24hPercent?.toFixed(2)}% today
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  ({(wallet?.change24hUsd ?? 0) >= 0 ? "+" : ""}{formatUsd(wallet?.change24hUsd ?? 0)})
+                </span>
+              </div>
+            )}
 
             {/* Quick Actions */}
             <div className="flex gap-3 mt-5">
@@ -109,11 +126,7 @@ export default function Home() {
 
         {/* Grant Banner */}
         {availableGrants.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.1 }}
-          >
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}>
             <Link href="/wallet">
               <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 hover:bg-amber-500/15 transition-all">
                 <div className="w-9 h-9 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
@@ -166,6 +179,11 @@ export default function Home() {
             {walletLoading && [1, 2, 3].map((i) => (
               <div key={i} className="h-16 bg-card/50 rounded-2xl animate-pulse border border-border/30" />
             ))}
+            {!walletLoading && !walletError && wallet?.tokens?.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground text-sm">No tokens in your wallet yet.</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -176,6 +194,9 @@ export default function Home() {
             <Link href="/activity" className="text-xs text-primary font-medium">See all</Link>
           </div>
           <div className="space-y-2">
+            {txError && (
+              <ErrorBanner message="Could not load transactions." onRetry={() => refetchTx()} />
+            )}
             {transactions?.transactions?.slice(0, 3).map((tx, i) => (
               <motion.div
                 key={tx.id}
@@ -217,9 +238,14 @@ export default function Home() {
                 </div>
               </motion.div>
             ))}
-            {!transactions && [1, 2].map((i) => (
+            {!transactions && !txError && [1, 2].map((i) => (
               <div key={i} className="h-14 bg-card/50 rounded-2xl animate-pulse border border-border/30" />
             ))}
+            {!txError && transactions?.transactions?.length === 0 && (
+              <div className="text-center py-6">
+                <p className="text-muted-foreground text-sm">No recent activity.</p>
+              </div>
+            )}
           </div>
         </div>
 

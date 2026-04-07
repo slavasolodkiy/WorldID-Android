@@ -7,7 +7,7 @@ import {
   getGetWalletQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, ArrowDownLeft, Copy, CheckCheck, X, ChevronLeft } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft, Copy, CheckCheck, ChevronLeft, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function formatUsd(val: number) {
@@ -16,13 +16,16 @@ function formatUsd(val: number) {
 
 type View = "overview" | "send" | "receive";
 
+const ETH_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+
 export default function Wallet() {
   const [view, setView] = useState<View>("overview");
   const [copied, setCopied] = useState(false);
   const [sendForm, setSendForm] = useState({ toAddress: "", amount: "", token: "WLD", note: "" });
   const [sendSuccess, setSendSuccess] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
-  const { data: wallet, isLoading } = useGetWallet();
+  const { data: wallet, isLoading, isError: walletError, refetch: refetchWallet } = useGetWallet();
   const { data: receiveInfo } = useGetReceiveInfo();
   const sendMutation = useSendTokens();
   const queryClient = useQueryClient();
@@ -34,7 +37,27 @@ export default function Wallet() {
   };
 
   const handleSend = () => {
-    if (!sendForm.toAddress || !sendForm.amount) return;
+    setSendError(null);
+
+    if (!sendForm.toAddress) {
+      setSendError("Please enter a destination address.");
+      return;
+    }
+    if (!ETH_ADDRESS_RE.test(sendForm.toAddress)) {
+      setSendError("Address must be a valid 0x-prefixed Ethereum address (42 characters).");
+      return;
+    }
+    if (!sendForm.amount || parseFloat(sendForm.amount) <= 0) {
+      setSendError("Amount must be greater than zero.");
+      return;
+    }
+
+    const selectedToken = wallet?.tokens?.find((t) => t.symbol === sendForm.token);
+    if (selectedToken && parseFloat(sendForm.amount) > selectedToken.balance) {
+      setSendError(`Insufficient balance. You have ${selectedToken.balance.toFixed(4)} ${selectedToken.symbol}.`);
+      return;
+    }
+
     sendMutation.mutate(
       {
         data: {
@@ -54,6 +77,10 @@ export default function Wallet() {
             setSendForm({ toAddress: "", amount: "", token: "WLD", note: "" });
           }, 2000);
         },
+        onError: (err: unknown) => {
+          const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+          setSendError(msg ?? "Transaction failed. Please try again.");
+        },
       }
     );
   };
@@ -66,7 +93,10 @@ export default function Wallet() {
       <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl px-6 pt-12 pb-4 border-b border-border/30">
         <div className="flex items-center gap-3">
           {view !== "overview" && (
-            <button onClick={() => setView("overview")} className="w-9 h-9 rounded-full bg-card flex items-center justify-center">
+            <button
+              onClick={() => { setView("overview"); setSendError(null); }}
+              className="w-9 h-9 rounded-full bg-card flex items-center justify-center"
+            >
               <ChevronLeft className="w-5 h-5" />
             </button>
           )}
@@ -85,12 +115,16 @@ export default function Wallet() {
             exit={{ opacity: 0 }}
             className="px-4 pt-6 pb-8 space-y-5"
           >
+            {walletError && (
+              <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-2xl p-3.5">
+                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                <p className="text-xs text-red-300 flex-1">Could not load wallet.</p>
+                <button onClick={() => refetchWallet()} className="text-xs text-red-400 font-medium underline underline-offset-2">Retry</button>
+              </div>
+            )}
+
             {/* Total balance */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="relative rounded-3xl overflow-hidden"
-            >
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative rounded-3xl overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 via-indigo-900/10 to-transparent" />
               <div className="relative bg-card/80 border border-white/10 rounded-3xl p-6 text-center">
                 <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">Portfolio Value</p>
@@ -98,14 +132,14 @@ export default function Wallet() {
                   <div className="h-12 bg-muted/30 rounded-xl animate-pulse mx-auto w-48" />
                 ) : (
                   <p className="text-5xl font-bold text-foreground tracking-tight">
-                    {formatUsd(wallet?.totalValueUsd ?? 0)}
+                    {walletError ? "—" : formatUsd(wallet?.totalValueUsd ?? 0)}
                   </p>
                 )}
                 <p className={cn(
                   "text-sm font-medium mt-2",
                   (wallet?.change24hPercent ?? 0) >= 0 ? "text-green-400" : "text-red-400"
                 )}>
-                  {(wallet?.change24hPercent ?? 0) >= 0 ? "+" : ""}{wallet?.change24hPercent?.toFixed(2)}% (24h)
+                  {!walletError && `${(wallet?.change24hPercent ?? 0) >= 0 ? "+" : ""}${wallet?.change24hPercent?.toFixed(2)}% (24h)`}
                 </p>
 
                 <div className="flex gap-3 mt-6">
@@ -163,6 +197,11 @@ export default function Wallet() {
                 {isLoading && [1, 2, 3].map((i) => (
                   <div key={i} className="h-18 bg-card/50 rounded-2xl animate-pulse border border-border/30" />
                 ))}
+                {!isLoading && !walletError && wallet?.tokens?.length === 0 && (
+                  <div className="text-center py-10">
+                    <p className="text-muted-foreground text-sm">No tokens yet.</p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -203,6 +242,17 @@ export default function Wallet() {
                   <p className="text-green-400 font-semibold">Transaction sent successfully!</p>
                 </motion.div>
               )}
+              {sendError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-2xl p-3.5"
+                >
+                  <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-red-300">{sendError}</p>
+                </motion.div>
+              )}
             </AnimatePresence>
 
             {/* Token selector */}
@@ -234,7 +284,8 @@ export default function Wallet() {
                   type="number"
                   placeholder="0.00"
                   value={sendForm.amount}
-                  onChange={(e) => setSendForm((f) => ({ ...f, amount: e.target.value }))}
+                  min={0}
+                  onChange={(e) => { setSendForm((f) => ({ ...f, amount: e.target.value })); setSendError(null); }}
                   className="w-full bg-card border border-border/50 rounded-2xl px-4 py-3.5 text-2xl font-bold text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50"
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">
@@ -258,9 +309,9 @@ export default function Wallet() {
               <label className="text-xs text-muted-foreground font-medium uppercase tracking-widest block mb-2">To</label>
               <input
                 type="text"
-                placeholder="0x... or username"
+                placeholder="0x... Ethereum address"
                 value={sendForm.toAddress}
-                onChange={(e) => setSendForm((f) => ({ ...f, toAddress: e.target.value }))}
+                onChange={(e) => { setSendForm((f) => ({ ...f, toAddress: e.target.value })); setSendError(null); }}
                 className="w-full bg-card border border-border/50 rounded-2xl px-4 py-3.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50"
               />
             </div>
@@ -300,30 +351,20 @@ export default function Wallet() {
               Share your address to receive WLD, USDC, or ETH on World Chain
             </p>
 
-            {/* QR Code placeholder */}
+            {/* QR Code */}
             <div className="w-56 h-56 bg-white rounded-3xl flex items-center justify-center p-4 shadow-2xl shadow-white/10">
               <div className="w-full h-full relative">
                 <svg viewBox="0 0 200 200" className="w-full h-full">
-                  {/* Simple QR code-like grid */}
                   {Array.from({ length: 10 }).map((_, row) =>
                     Array.from({ length: 10 }).map((_, col) => {
                       const hash = (row * 13 + col * 7 + row * col) % 3;
                       const isCorner = (row < 3 && col < 3) || (row < 3 && col > 6) || (row > 6 && col < 3);
                       const isDark = isCorner || hash === 0;
                       return (
-                        <rect
-                          key={`${row}-${col}`}
-                          x={col * 20 + 1}
-                          y={row * 20 + 1}
-                          width={18}
-                          height={18}
-                          rx={2}
-                          fill={isDark ? "#000" : "#fff"}
-                        />
+                        <rect key={`${row}-${col}`} x={col * 20 + 1} y={row * 20 + 1} width={18} height={18} rx={2} fill={isDark ? "#000" : "#fff"} />
                       );
                     })
                   )}
-                  {/* Corner markers */}
                   {[[0,0],[0,140],[140,0]].map(([x,y], i) => (
                     <g key={i}>
                       <rect x={x} y={y} width={60} height={60} rx={6} fill="#000"/>
