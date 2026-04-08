@@ -1,99 +1,212 @@
 # AGENTS.md — Agent Guidance for World App Foundation
 
-This file documents conventions, invariants, and important context for AI coding agents working in this repository.
+## Mission
+This repository is an Android-inspired replication project in the World ID / Worldcoin product direction.
+
+Your role is to evaluate and improve it as a reusable product foundation, not just a visual or navigational copy.
 
 ## Repository Identity
-
-This is a **web application** (not native Android), inspired by the World (Worldcoin) Android app. The name "WorldID-Android" reflects the product inspiration, not the implementation platform. Agents should not add Android/Kotlin/Java code.
+This is a **web application** (not native Android), inspired by the World / Worldcoin Android app. The repository name reflects the product inspiration, not the implementation platform. Do not add Android, Kotlin, or Java code unless explicitly requested.
 
 ## Stack
 
 | Layer | Technology |
-|-------|-----------|
+|-------|------------|
 | Frontend | React 19 + Vite 7 + Tailwind CSS v4 |
 | Backend | Express 5 + Node.js 24 (ESM) |
 | Database | PostgreSQL + Drizzle ORM |
 | Monorepo | pnpm workspaces |
 | API contract | OpenAPI 3.1 spec → orval codegen |
 
-## Key Invariants — Do Not Break
+## Priority goals
+- determine whether implementation depth is real or superficial
+- improve code organization and reusability
+- identify missing product flows and weak domain modeling
+- improve maintainability, configuration hygiene, and handoff quality
+- make the project more credible for real replication work
 
-1. **User scoping**: Every data access must use `req.currentUser.id` (set by `resolveUser` middleware). Never use `LIMIT 1` to pick a user.
+## What good looks like
+A strong result should move this repo toward:
+- a credible product architecture
+- clear separation of UI, state, domain, and data
+- realistic user flows
+- safe config and secret handling
+- scalable screen and navigation structure
+- maintainable backend and API assumptions
 
-2. **Money precision**: Token amounts → `numeric(28,8)`. USD values → `numeric(18,6)`. Never use `real`/`float` for financial values. Parse numeric strings with `parseFloat()` in service layers.
-
-3. **Wallet send is atomic**: The `db.transaction()` in `WalletService.send()` must update balance AND insert transaction together. Never split these.
-
-4. **Grant claim is atomic**: Same principle — grant status update, balance increment, transaction insert are one DB transaction in `GrantsService.claim()`.
-
-5. **Address validation**: Ethereum addresses must match `/^0x[0-9a-fA-F]{40}$/` before any send operation.
-
-6. **Error contracts**: All API errors return `{ error: string, code: string }`. The `AppError` class sets the `code`. Use it instead of raw `res.status(x).json()`.
-
-7. **Preserve route map**: Do not change URL paths in `artifacts/api-server/src/routes/index.ts` without also updating the OpenAPI spec and regenerating the client.
+## Key invariants — do not break
+1. **User scoping:** every data access must use `req.currentUser.id` or an equivalent authenticated user context. Never use `LIMIT 1` to pick a user.
+2. **Money precision:** token amounts should use `numeric(28,8)` and USD values `numeric(18,6)` or equivalent precise numeric types. Never use `real` or `float` for financial values.
+3. **Wallet send is atomic:** balance updates and transaction inserts must happen in one DB transaction.
+4. **Grant claim is atomic:** grant status update, balance increment, and transaction insert must happen in one DB transaction.
+5. **Address validation:** Ethereum addresses must match `/^0x[0-9a-fA-F]{40}$/` before send operations.
+6. **Error contracts:** API errors should use a standard envelope like `{ error: string, code: string }` through shared error helpers, not ad hoc raw responses.
+7. **Preserve route map:** do not change public route paths without updating the OpenAPI spec and regenerating the client.
 
 ## Workflow
 
 ### Schema changes
 1. Edit `lib/db/src/schema/*.ts`
-2. Run `pnpm --filter @workspace/db run push-force`
-3. Run `pnpm --filter @workspace/db run seed` (idempotent)
+2. Run the appropriate DB push or migration command
+3. Re-seed if required
 4. Update affected services in `artifacts/api-server/src/services/`
 
 ### Adding an API endpoint
-1. Add to `lib/api-spec/openapi.yaml`
+1. Add it to `lib/api-spec/openapi.yaml`
 2. Run `pnpm --filter @workspace/api-spec run codegen`
-3. Implement route in `artifacts/api-server/src/routes/`
+3. Implement the route in `artifacts/api-server/src/routes/`
 4. Add service logic in `artifacts/api-server/src/services/`
 5. Add integration tests in `artifacts/api-server/tests/`
 
 ### Running integration tests
 ```bash
 pnpm --filter @workspace/api-server run test
-```
-Tests require the seed data to be present. Run seed first if starting fresh.
 
-## Mocked / Stubbed Flows
+## Audit rules
 
-Be explicit about what is NOT real:
+When auditing this repository:
 
-- **Wallet 24h change**: Hardcoded `3.2%` in `WalletService.getWallet()`. Not from a real price feed.
-- **QR code**: SVG approximation, not a real QR code library.
-- **Mini-app launch**: Records a launch event but does not actually open an iframe/webview.
-- **Swap**: UI button exists but no route or logic. Returns 404 if called.
-- **Verification sessions**: Creates a DB record but does not call any real World ID verification service.
-- **Auth**: `X-World-User-Id` header is not cryptographically verified. Replace with JWT validation before production use.
+inspect actual code paths and project structure
+reference exact files, folders, routes, services, models, and config
+separate findings into:
+implemented
+partially implemented
+missing
+mocked / stubbed / hardcoded
+unclear
+judge depth honestly, not by appearance alone
 
-## Testing Approach
+## Review focus
 
-- Tests are in `artifacts/api-server/tests/integration.test.ts`
-- Uses Node.js built-in `node:test` runner + native `fetch`
-- Tests start the Express app on a random port, no mocking of the DB
-- Requires `DATABASE_URL` and seeded data
+Pay special attention to:
 
-## Files to Know
+app and module structure
+navigation architecture
+state management patterns
+domain model depth
+repository and data layer quality
+networking assumptions
+local persistence strategy
+auth and session lifecycle
+onboarding flow
+validation and input handling
+loading / empty / error / retry states
+analytics and logging readiness
+environment and config separation
+testability and test coverage readiness
 
-```
+## Reuse expectations
+
+Prefer:
+
+modular architecture
+isolated data and service layers
+centralized config and constants
+reusable screens and components
+explicit environment handling
+minimal duplication
+clear naming and package organization
+
+Avoid:
+
+business logic inside UI code
+hardcoded secrets
+hardcoded URLs and credentials
+one-off shortcuts that break reuse
+placeholder or demo logic disguised as full implementation
+
+## Mocked / stubbed flows
+
+Be explicit about what is not real. Examples may include:
+
+wallet 24h change based on hardcoded or seeded values
+QR code approximations rather than production QR handling
+mini-app launch events without a real embedded runtime
+swap UI without real route or business logic
+verification sessions without real third-party verification
+auth headers or demo identity assumptions without cryptographic validation
+
+## Testing approach
+Prefer integration tests for auth, wallet, grants, and transactions
+Prefer real DB-backed tests over brittle mocks where practical
+Seed data should be deterministic and documented
+
+## Files to know
 artifacts/api-server/src/
-  middlewares/auth.ts        # resolveUser — user context
-  middlewares/error.ts       # AppError + errorHandler
-  services/wallet.service.ts # Atomic send logic
-  services/grants.service.ts # Atomic claim logic, orb check
-  services/identity.service.ts
-
+  middlewares/            # auth, error handling, request context
+  routes/                 # thin API handlers
+  services/               # business logic
 lib/db/src/
-  schema/identity.ts         # identityTable, credentialsTable
-  schema/wallet.ts           # tokensTable (numeric amounts, identityId FK)
-  schema/transactions.ts     # transactionsTable (numeric amounts, identityId FK)
-  schema/grants.ts           # grantsTable (numeric amounts, identityId FK)
-  seed.ts                    # Idempotent seed (upsert)
-```
+  schema/                 # Drizzle schema
+  seed.ts                 # idempotent seed
+lib/api-spec/
+  openapi.yaml            # contract source of truth
 
-## Do Not
+## Secrets and safety
 
-- Add `LIMIT 1` to any user data query
-- Use `real` / `float` for monetary values
-- Split a send or claim into separate DB statements (no atomicity)
-- Expose raw DB errors to API clients (use AppError)
-- Store secrets in source code (use environment variables)
-- Present this as an official World/Worldcoin product
+Never expose or preserve:
+
+database connection strings
+passwords
+API keys
+secret tokens
+production secrets in code
+plaintext credentials in docs or comments
+
+If found:
+
+flag them immediately
+move them to secure config or env handling
+update .env.example
+recommend rotating exposed secrets
+
+## Product-maturity judgment
+
+Always infer the current maturity level using code evidence:
+
+static mockup
+clickable prototype
+MVP skeleton
+partial product
+near-production foundation
+
+## Output format
+
+When asked to review or improve this repo, structure the output as:
+
+Executive summary
+Actual stack and architecture
+Replication depth assessment
+Implemented vs partial vs missing
+Mocked / stubbed / hardcoded areas
+UX and product-flow gaps
+Reuse blockers
+Production-readiness blockers
+Prioritized backlog:
+critical
+important
+nice-to-have
+Best next prompt for Replit
+
+## Do not
+add LIMIT 1 to user data queries
+use real or float for monetary values
+split atomic financial operations into separate DB statements
+expose raw DB errors to API clients
+store secrets in source code
+present this as an official World / Worldcoin product
+
+## Editing rules
+
+Unless explicitly asked:
+
+do not perform sweeping rewrites
+do not add unnecessary dependencies
+do not optimize prematurely
+
+When editing:
+
+prefer small, clear, high-value changes
+preserve working behavior
+improve readability and handoff quality
+prioritize reusable architecture over fast hacks
