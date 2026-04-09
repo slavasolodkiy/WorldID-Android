@@ -1,0 +1,83 @@
+You are working in repo: slavasolodkiy/WorldID-Android
+Branch target: main
+Current baseline commit: 11aa7b5
+
+Role of this repo in the ecosystem:
+Android is a product client/backend slice that must converge upward to Apple’s trust and correctness model, while preserving useful Android-specific domains (grants and mini-apps).
+
+Source-of-truth rule:
+Use WorldID-Apple as the temporary canonical reference for:
+1) auth/session boundaries
+2) verification lifecycle integrity
+3) transaction correctness and idempotency
+
+Objective:
+Close the highest-risk gaps so Android reaches Apple-level rigor in auth, verification, and financial correctness, without deleting Android-specific product value.
+
+Architectural direction:
+1) Align trust model and lifecycle semantics with Apple first.
+2) Preserve grants/mini-apps but make them user-scoped and consistent with the same auth + transaction invariants.
+3) Converge naming/contracts where feasible; document unavoidable differences explicitly.
+4) Keep changes incremental and test-backed.
+
+Inspect first (in this order):
+1) artifacts/api-server/src/middlewares/auth.ts
+2) artifacts/api-server/src/app.ts
+3) artifacts/api-server/src/routes/index.ts
+4) artifacts/api-server/src/routes/identity.ts
+5) artifacts/api-server/src/routes/wallet.ts
+6) artifacts/api-server/src/routes/transactions.ts
+7) artifacts/api-server/src/services/identity.service.ts
+8) artifacts/api-server/src/services/wallet.service.ts
+9) artifacts/api-server/src/services/grants.service.ts
+10) lib/api-spec/openapi.yaml
+11) lib/db/src/schema/*
+12) artifacts/api-server/tests/integration.test.ts
+13) docs/reuse-readiness-report.md and AGENTS.md
+
+Concrete tasks:
+1) Replace weak identity fallback behavior:
+- remove demo fallback user resolution
+- implement a real authenticated request identity boundary aligned with Apple’s model
+- ensure all user-scoped endpoints rely on authenticated identity, not header spoofing fallback
+
+2) Bring verification lifecycle to Apple-level rigor:
+- add complete verification lifecycle (not just initiation)
+- enforce session/user/proof linkage and transition validity
+- ensure verification writes are transactional and idempotent-safe
+
+3) Align transaction/wallet integrity with Apple:
+- enforce atomic debit paths with concurrency safety
+- add idempotency key semantics for retry-safe send flows
+- verify non-negative balance and deterministic failure behavior
+
+4) Converge naming/schema/API assumptions:
+- reduce divergence between user/identity and endpoint semantics where practical
+- preserve Android domains (grants/mini-apps) but align error contracts and ownership constraints
+- ensure mini-app launch and grant flows are strictly user-scoped
+
+5) Improve migration/test/CI discipline:
+- add/normalize migration workflow and deterministic seed behavior
+- expand integration tests for auth/verification/transactions/grants failure paths
+- ensure typecheck and tests are wired into CI if missing
+
+Constraints / Do not break:
+1) Do not remove Android-specific features (grants/mini-apps) unless unsafe.
+2) Do not do broad rewrites of unrelated UI.
+3) Do not introduce temporary hacks that diverge further from Apple.
+4) Preserve existing public route behavior where possible; document all breaking changes.
+
+Acceptance criteria:
+1) No fallback identity behavior remains in runtime auth boundary.
+2) Verification lifecycle supports secure completion and transactional updates.
+3) Transaction send path is retry-safe and concurrency-safe.
+4) User scoping is enforced across grants/mini-apps/transactions.
+5) Typecheck passes; integration tests cover critical paths and failure modes.
+6) Deliver a “Android-to-Apple convergence delta” report mapping what is now aligned, partially aligned, and still divergent.
+
+Prioritized implementation plan:
+1) Auth boundary convergence.
+2) Verification lifecycle completion + transactions hardening.
+3) Schema/contract alignment for user scoping and naming.
+4) Tests, migrations, CI.
+5) Convergence report with residual divergence list and next actions.

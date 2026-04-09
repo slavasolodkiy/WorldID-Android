@@ -1,5 +1,5 @@
 import { db, tokensTable, transactionsTable, identityTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { AppError } from "../middlewares/error";
 
@@ -64,6 +64,16 @@ export class WalletService {
     }));
   }
 
+  /**
+   * Atomically send tokens.
+   *
+   * Concurrency safety: uses a single UPDATE ... WHERE balance >= amount SQL
+   * statement instead of read-then-write, eliminating TOCTOU race conditions.
+   *
+   * Idempotency: callers may pass an idempotencyKey (X-Idempotency-Key header).
+   * If a transaction with that key already exists, the existing record is
+   * returned (HTTP 200) without re-debiting the balance.
+   */
   static async send(
     identityId: number,
     walletAddress: string,
@@ -71,7 +81,9 @@ export class WalletService {
     amount: number,
     token: string,
     note?: string,
+    idempotencyKey?: string,
   ) {
+    // --- Pre-flight validation (no DB writes yet) ---
     if (!ETH_ADDRESS_RE.test(toAddress)) {
       throw new AppError(
         "Invalid destination address. Must be a 0x-prefixed 40-hex-character Ethereum address.",
@@ -88,6 +100,32 @@ export class WalletService {
       throw new AppError("Cannot send to own address.", 400, "SELF_SEND");
     }
 
+    // --- Idempotency check: return existing tx if key already seen ---
+    if (idempotencyKey) {
+      const [existing] = await db
+        .select()
+        .from(transactionsTable)
+        .where(eq(transactionsTable.idempotencyKey, idempotencyKey));
+
+      if (existing) {
+        return {
+          id: String(existing.id),
+          type: existing.type,
+          status: existing.status,
+          amount: n(existing.amount),
+          amountUsd: n(existing.amountUsd),
+          token: existing.token,
+          fromAddress: existing.fromAddress,
+          toAddress: existing.toAddress,
+          txHash: existing.txHash,
+          note: existing.note,
+          createdAt: existing.createdAt.toISOString(),
+          idempotent: true,
+        };
+      }
+    }
+
+    // --- Verify token exists in user's wallet ---
     const [tokenRecord] = await db
       .select()
       .from(tokensTable)
@@ -97,37 +135,42 @@ export class WalletService {
       throw new AppError(`Token ${token} not found in your wallet.`, 404, "TOKEN_NOT_FOUND");
     }
 
-    const currentBalance = n(tokenRecord.balance);
-    if (currentBalance < amount) {
-      throw new AppError(
-        `Insufficient ${token} balance. Available: ${currentBalance.toFixed(8)}, requested: ${amount}.`,
-        400,
-        "INSUFFICIENT_BALANCE",
-      );
-    }
-
-    const amountUsd = amount * n(tokenRecord.priceUsd);
-    const newBalance = currentBalance - amount;
-    const newBalanceUsd = newBalance * n(tokenRecord.priceUsd);
-
+    const priceUsd = n(tokenRecord.priceUsd);
+    const amountUsd = amount * priceUsd;
     const txId = randomUUID();
     const txHash = `0x${randomUUID().replace(/-/g, "")}${randomUUID().replace(/-/g, "")}`.slice(0, 66);
 
+    // --- Atomic debit: UPDATE WHERE balance >= amount (prevents TOCTOU races) ---
     const tx = await db.transaction(async (trx) => {
-      await trx
+      const updated = await trx
         .update(tokensTable)
         .set({
-          balance: newBalance.toFixed(8),
-          balanceUsd: newBalanceUsd.toFixed(6),
+          balance: sql`${tokensTable.balance} - ${amount.toFixed(8)}::numeric`,
+          balanceUsd: sql`(${tokensTable.balance} - ${amount.toFixed(8)}::numeric) * ${priceUsd.toFixed(6)}::numeric`,
           updatedAt: new Date(),
         })
-        .where(eq(tokensTable.id, tokenRecord.id));
+        .where(
+          and(
+            eq(tokensTable.id, tokenRecord.id),
+            sql`${tokensTable.balance} >= ${amount.toFixed(8)}::numeric`,
+          )
+        )
+        .returning({ id: tokensTable.id });
+
+      if (updated.length === 0) {
+        throw new AppError(
+          `Insufficient ${token} balance.`,
+          400,
+          "INSUFFICIENT_BALANCE",
+        );
+      }
 
       const [inserted] = await trx
         .insert(transactionsTable)
         .values({
           identityId,
           txId,
+          idempotencyKey: idempotencyKey ?? null,
           type: "send",
           status: "confirmed",
           amount: amount.toFixed(8),

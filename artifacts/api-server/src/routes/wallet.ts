@@ -33,6 +33,11 @@ router.post("/send", async (req, res, next): Promise<void> => {
     }
 
     const { toAddress, amount, token, note } = parsed.data;
+
+    // X-Idempotency-Key: clients may send a UUID so retries return the
+    // same transaction without re-debiting the balance.
+    const idempotencyKey = req.headers["x-idempotency-key"] as string | undefined;
+
     const tx = await WalletService.send(
       req.currentUser.id,
       req.currentUser.walletAddress,
@@ -40,9 +45,10 @@ router.post("/send", async (req, res, next): Promise<void> => {
       amount,
       token,
       note,
+      idempotencyKey,
     );
 
-    req.log.info({ txId: tx.id, amount, token }, "Transaction sent");
+    req.log.info({ txId: tx.id, amount, token, idempotent: (tx as any).idempotent }, "Transaction sent");
     res.json(tx);
   } catch (err) {
     next(err);

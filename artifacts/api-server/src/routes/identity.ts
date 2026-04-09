@@ -1,6 +1,8 @@
 import { Router } from "express";
+import { z } from "zod";
 import { InitiateVerificationBody } from "@workspace/api-zod";
 import { IdentityService } from "../services/identity.service";
+import { AppError } from "../middlewares/error";
 
 const router = Router();
 
@@ -37,13 +39,69 @@ router.post("/verify", async (req, res, next): Promise<void> => {
       parsed.data.level as "device" | "orb",
     );
 
-    req.log.info({ sessionId: session.sessionId, level: session.level }, "Verification session created");
+    req.log.info({ sessionId: session.sessionId, level: session.level, reused: session.reused }, "Verification session");
     res.json({
       sessionId: session.sessionId,
       status: session.status,
       level: session.level,
       expiresAt: session.expiresAt.toISOString(),
+      reused: session.reused,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const CompleteVerificationBody = z.object({
+  sessionId: z.string().min(1),
+  nullifierHash: z.string().optional(),
+  merkleRoot: z.string().optional(),
+  proof: z.string().optional(),
+});
+
+/**
+ * Complete verification — aligns Android with Apple's lifecycle completion model.
+ * Atomically: marks session completed + upgrades level + issues credential.
+ * Idempotent: calling again with same sessionId returns success without re-writing.
+ */
+router.post("/verify/complete", async (req, res, next): Promise<void> => {
+  try {
+    const parsed = CompleteVerificationBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { sessionId, nullifierHash, merkleRoot, proof } = parsed.data;
+
+    const result = await IdentityService.completeVerification(
+      req.currentUser.id,
+      sessionId,
+      { nullifierHash, merkleRoot, proof },
+    );
+
+    req.log.info(
+      { sessionId, level: result.level, upgraded: !result.alreadyCompleted },
+      "Verification completed",
+    );
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/verify/sessions", async (req, res, next): Promise<void> => {
+  try {
+    const sessions = await IdentityService.getVerificationSessions(req.currentUser.id);
+    res.json(
+      sessions.map((s) => ({
+        sessionId: s.sessionId,
+        status: s.status,
+        level: s.level,
+        expiresAt: s.expiresAt.toISOString(),
+        createdAt: s.createdAt.toISOString(),
+      })),
+    );
   } catch (err) {
     next(err);
   }

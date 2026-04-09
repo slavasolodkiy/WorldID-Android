@@ -1,15 +1,14 @@
 /**
- * User-context middleware.
+ * Auth middleware (aligned with Apple model).
  *
- * Resolution order:
- *   1. X-World-User-Id header  — worldId string (e.g. "wld_abc123")
- *   2. Fallback                — first identity row (dev/demo convenience)
+ * Resolution order per request:
+ *   1. req.session.userId      — set by POST /auth/login (session-based, primary)
+ *   2. X-World-User-Id header  — worldId string, developer/test convenience
+ *   3. (no fallback)           — returns 401
  *
- * In production this header would be replaced by a signed JWT verified here.
- * The middleware attaches `req.currentUser` (the full Identity row) so every
- * downstream handler has user context without touching the DB again.
- *
- * If an explicit header is supplied but the user does not exist → 401.
+ * The demo-user fallback ("wld_1a2b3c4d5e6f7g8h9i0j" regardless of caller)
+ * has been removed to close the auth boundary.  In development, set
+ * X-World-User-Id to the seeded worldId, or POST /api/auth/login first.
  */
 
 import { Request, Response, NextFunction } from "express";
@@ -26,23 +25,40 @@ declare global {
   }
 }
 
-const FALLBACK_WORLD_ID = "wld_1a2b3c4d5e6f7g8h9i0j";
-
 export async function resolveUser(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const worldId = (req.headers["x-world-user-id"] as string | undefined) ?? FALLBACK_WORLD_ID;
+  let user: Identity | undefined;
 
-  const [user] = await db
-    .select()
-    .from(identityTable)
-    .where(eq(identityTable.worldId, worldId))
-    .limit(1);
+  // 1) Session-based auth (primary — set by POST /api/auth/login)
+  const sessionUserId: number | undefined = (req.session as Record<string, unknown> | undefined)?.userId as number | undefined;
+  if (sessionUserId) {
+    const [found] = await db
+      .select()
+      .from(identityTable)
+      .where(eq(identityTable.id, sessionUserId))
+      .limit(1);
+    user = found;
+  }
 
+  // 2) Developer header override (X-World-User-Id: wld_xxx)
   if (!user) {
-    if (req.headers["x-world-user-id"]) {
-      res.status(401).json({ error: "Unknown user", code: "UNAUTHORIZED" });
-      return;
+    const worldIdHeader = req.headers["x-world-user-id"] as string | undefined;
+    if (worldIdHeader) {
+      const [found] = await db
+        .select()
+        .from(identityTable)
+        .where(eq(identityTable.worldId, worldIdHeader))
+        .limit(1);
+      user = found;
+      if (!user) {
+        res.status(401).json({ error: "Unknown user", code: "UNAUTHORIZED" });
+        return;
+      }
     }
-    res.status(404).json({ error: "No identity found. Run the seed script.", code: "IDENTITY_NOT_FOUND" });
+  }
+
+  // 3) Neither — reject
+  if (!user) {
+    res.status(401).json({ error: "Authentication required", code: "UNAUTHORIZED" });
     return;
   }
 

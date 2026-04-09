@@ -1,6 +1,7 @@
-import { pgTable, text, serial, timestamp, real, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, real, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { identityTable } from "./identity";
 
 export const miniAppsTable = pgTable("mini_apps", {
   id: serial("id").primaryKey(),
@@ -29,6 +30,7 @@ export type MiniApp = typeof miniAppsTable.$inferSelect;
 export const miniAppLaunchesTable = pgTable("mini_app_launches", {
   id: serial("id").primaryKey(),
   appId: text("app_id").notNull(),
+  identityId: integer("identity_id").references(() => identityTable.id, { onDelete: "set null" }),
   launchedAt: timestamp("launched_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

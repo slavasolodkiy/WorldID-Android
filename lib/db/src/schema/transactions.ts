@@ -7,6 +7,7 @@ export const transactionsTable = pgTable("transactions", {
   id: serial("id").primaryKey(),
   identityId: integer("identity_id").references(() => identityTable.id, { onDelete: "set null" }),
   txId: text("tx_id").notNull().unique(),
+  idempotencyKey: text("idempotency_key").unique(),
   type: text("type").notNull(),
   status: text("status").notNull().default("confirmed"),
   amount: numeric("amount", { precision: 28, scale: 8 }).notNull(),
