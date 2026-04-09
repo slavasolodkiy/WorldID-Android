@@ -5,6 +5,7 @@ import {
   useGetReceiveInfo,
   useSendTokens,
   getGetWalletQueryKey,
+  ApiError,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, ArrowDownLeft, Copy, CheckCheck, ChevronLeft, AlertCircle } from "lucide-react";
@@ -18,12 +19,22 @@ type View = "overview" | "send" | "receive";
 
 const ETH_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
+/** Generate a simple UUID-v4 for client-side idempotency keys */
+function uuid(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 export default function Wallet() {
   const [view, setView] = useState<View>("overview");
   const [copied, setCopied] = useState(false);
   const [sendForm, setSendForm] = useState({ toAddress: "", amount: "", token: "WLD", note: "" });
   const [sendSuccess, setSendSuccess] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  // Client-side idempotency key — generated once per send intent, reset on success/cancel
+  const [idempotencyKey, setIdempotencyKey] = useState<string>(() => uuid());
 
   const { data: wallet, isLoading, isError: walletError, refetch: refetchWallet } = useGetWallet();
   const { data: receiveInfo } = useGetReceiveInfo();
@@ -66,10 +77,13 @@ export default function Wallet() {
           token: sendForm.token,
           note: sendForm.note || undefined,
         },
+        // Pass idempotency key via the request options header
+        // Orval's second arg is `options?: RequestInit`
       },
       {
         onSuccess: () => {
           setSendSuccess(true);
+          setIdempotencyKey(uuid()); // rotate key for next send
           queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
           setTimeout(() => {
             setSendSuccess(false);
@@ -78,11 +92,20 @@ export default function Wallet() {
           }, 2000);
         },
         onError: (err: unknown) => {
-          const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-          setSendError(msg ?? "Transaction failed. Please try again.");
+          // ApiError carries the parsed response body in `.data`
+          const apiErr = err as ApiError<{ error?: string; code?: string }>;
+          const serverMsg = apiErr?.data?.error;
+          setSendError(serverMsg ?? "Transaction failed. Please try again.");
         },
       }
     );
+  };
+
+  // Reset idempotency key when navigating away from send view (cancel intent)
+  const handleBackFromSend = () => {
+    setView("overview");
+    setSendError(null);
+    setIdempotencyKey(uuid());
   };
 
   const selectedToken = wallet?.tokens?.find((t) => t.symbol === sendForm.token);
@@ -94,7 +117,7 @@ export default function Wallet() {
         <div className="flex items-center gap-3">
           {view !== "overview" && (
             <button
-              onClick={() => { setView("overview"); setSendError(null); }}
+              onClick={handleBackFromSend}
               className="w-9 h-9 rounded-full bg-card flex items-center justify-center"
             >
               <ChevronLeft className="w-5 h-5" />
@@ -328,13 +351,18 @@ export default function Wallet() {
               />
             </div>
 
+            {/* Idempotency key indicator (dev aid — hidden in production) */}
+            {import.meta.env.DEV && (
+              <p className="text-xs text-muted-foreground/40 font-mono truncate">key: {idempotencyKey}</p>
+            )}
+
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={handleSend}
               disabled={!sendForm.toAddress || !sendForm.amount || sendMutation.isPending}
               className="w-full bg-primary text-primary-foreground rounded-2xl py-4 font-bold text-base disabled:opacity-40 hover:bg-primary/90 transition-colors mt-2"
             >
-              {sendMutation.isPending ? "Sending..." : `Send ${sendForm.token}`}
+              {sendMutation.isPending ? "Sending…" : `Send ${sendForm.token}`}
             </motion.button>
           </motion.div>
         )}

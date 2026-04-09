@@ -1,6 +1,17 @@
-import { motion } from "framer-motion";
-import { useGetIdentity, useGetCredentials, useInitiateVerification } from "@workspace/api-client-react";
-import { Shield, ShieldCheck, CheckCircle, Clock, ExternalLink, AlertCircle } from "lucide-react";
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  useGetIdentity,
+  useGetCredentials,
+  useInitiateVerification,
+  useCompleteVerification,
+  useGetVerificationSessions,
+  getGetVerificationSessionsQueryKey,
+  getGetIdentityQueryKey,
+  getGetCredentialsQueryKey,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Shield, ShieldCheck, CheckCircle, Clock, ExternalLink, AlertCircle, RefreshCw, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function OrbAnimation() {
@@ -46,14 +57,24 @@ function OrbAnimation() {
   );
 }
 
+const SESSION_STATUS_CONFIG = {
+  pending: { label: "Pending", icon: Clock, color: "text-amber-400", bg: "bg-amber-500/10" },
+  processing: { label: "Processing", icon: RefreshCw, color: "text-blue-400", bg: "bg-blue-500/10" },
+  completed: { label: "Completed", icon: CheckCircle, color: "text-green-400", bg: "bg-green-500/10" },
+  failed: { label: "Failed", icon: XCircle, color: "text-red-400", bg: "bg-red-500/10" },
+  expired: { label: "Expired", icon: XCircle, color: "text-muted-foreground", bg: "bg-muted/20" },
+};
+
 export default function Identity() {
+  const queryClient = useQueryClient();
   const { data: identity, isLoading, isError: identityError, refetch } = useGetIdentity();
   const { data: credentials, isLoading: credsLoading } = useGetCredentials();
+  const { data: sessions, refetch: refetchSessions } = useGetVerificationSessions();
   const verifyMutation = useInitiateVerification();
+  const completeMutation = useCompleteVerification();
 
-  const handleVerify = () => {
-    verifyMutation.mutate({ data: { level: "orb" } });
-  };
+  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
+  const [completeSuccess, setCompleteSuccess] = useState(false);
 
   const levelConfig = {
     none: { label: "Not Verified", color: "text-muted-foreground", bg: "bg-muted/30", border: "border-muted/30" },
@@ -63,6 +84,41 @@ export default function Identity() {
 
   const level = (identity?.verificationLevel ?? "none") as keyof typeof levelConfig;
   const lvl = levelConfig[level];
+
+  const handleInitiate = () => {
+    verifyMutation.mutate(
+      { data: { level: "orb" } },
+      {
+        onSuccess: (data) => {
+          setPendingSessionId((data as { sessionId: string }).sessionId);
+          refetchSessions();
+        },
+      }
+    );
+  };
+
+  const handleComplete = () => {
+    if (!pendingSessionId) return;
+    completeMutation.mutate(
+      { data: { sessionId: pendingSessionId } },
+      {
+        onSuccess: () => {
+          setCompleteSuccess(true);
+          setPendingSessionId(null);
+          queryClient.invalidateQueries({ queryKey: getGetIdentityQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetCredentialsQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetVerificationSessionsQueryKey() });
+          refetch();
+          refetchSessions();
+        },
+      }
+    );
+  };
+
+  // Use the most recent pending session if we don't have a local one
+  const activePendingSession = pendingSessionId
+    ? pendingSessionId
+    : sessions?.find((s) => s.status === "pending")?.sessionId ?? null;
 
   return (
     <div className="min-h-full bg-background">
@@ -135,15 +191,15 @@ export default function Identity() {
               )}
             </div>
           </motion.div>
-        ) : !identityError ? null : null}
+        ) : null}
 
         {/* Credentials */}
         <div>
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">Credentials</h2>
           <div className="space-y-2">
-            {credsLoading && [1].map((i) => (
-              <div key={i} className="h-16 bg-card/50 rounded-2xl animate-pulse border border-border/30" />
-            ))}
+            {credsLoading && (
+              <div className="h-16 bg-card/50 rounded-2xl animate-pulse border border-border/30" />
+            )}
             {!credsLoading && credentials?.length === 0 && (
               <div className="text-center py-8">
                 <p className="text-muted-foreground text-sm">No credentials issued yet.</p>
@@ -186,7 +242,40 @@ export default function Identity() {
           </div>
         </div>
 
-        {/* Verify CTA */}
+        {/* Verification sessions */}
+        {sessions && sessions.length > 0 && (
+          <div>
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">Verification Sessions</h2>
+            <div className="space-y-2">
+              {sessions.map((s) => {
+                const cfg = SESSION_STATUS_CONFIG[s.status as keyof typeof SESSION_STATUS_CONFIG]
+                  ?? SESSION_STATUS_CONFIG.pending;
+                const StatusIcon = cfg.icon;
+                return (
+                  <div
+                    key={s.sessionId}
+                    className="flex items-center gap-3 bg-card border border-border/50 rounded-2xl p-3.5"
+                  >
+                    <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0", cfg.bg)}>
+                      <StatusIcon className={cn("w-4 h-4", cfg.color)} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-foreground capitalize">{s.level} — {cfg.label}</p>
+                      <p className="text-xs text-muted-foreground font-mono truncate">{s.sessionId.slice(0, 16)}…</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground flex-shrink-0">
+                      {new Date(s.expiresAt) > new Date() && s.status === "pending"
+                        ? `Exp ${new Date(s.expiresAt).toLocaleDateString()}`
+                        : cfg.label}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Verify CTA (upgrade or completion) */}
         {identity?.verificationLevel !== "orb" && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -194,37 +283,93 @@ export default function Identity() {
             transition={{ delay: 0.5 }}
             className="bg-gradient-to-br from-blue-900/30 to-indigo-900/20 border border-blue-500/20 rounded-3xl p-5"
           >
-            <div className="flex items-start gap-3">
+            <div className="flex items-start gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center flex-shrink-0">
                 <Shield className="w-5 h-5 text-blue-400" />
               </div>
               <div className="flex-1">
-                <p className="text-sm font-bold text-foreground">Upgrade to Orb Verification</p>
+                <p className="text-sm font-bold text-foreground">
+                  {activePendingSession ? "Complete Your Verification" : "Upgrade to Orb Verification"}
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Get Orb-verified to access exclusive grants, higher limits, and the full World ecosystem.
+                  {activePendingSession
+                    ? "Your verification session is ready. Submit your proof to complete verification."
+                    : "Get Orb-verified to access exclusive grants, higher limits, and the full World ecosystem."}
                 </p>
               </div>
             </div>
 
-            {verifyMutation.isError && (
-              <div className="mt-3 flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-2.5">
-                <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-                <p className="text-xs text-red-300">Could not start verification session. Please try again.</p>
+            {/* Error states */}
+            <AnimatePresence>
+              {verifyMutation.isError && !activePendingSession && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mb-3 flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-2.5"
+                >
+                  <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                  <p className="text-xs text-red-300">Could not start verification session. Please try again.</p>
+                </motion.div>
+              )}
+              {completeMutation.isError && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mb-3 flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-2.5"
+                >
+                  <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                  <p className="text-xs text-red-300">
+                    {(completeMutation.error as { data?: { error?: string } })?.data?.error
+                      ?? "Verification failed. Please try again."}
+                  </p>
+                </motion.div>
+              )}
+              {completeSuccess && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mb-3 flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-xl p-2.5"
+                >
+                  <CheckCircle className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
+                  <p className="text-xs text-green-300">Verification complete! Your level has been upgraded.</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Two-step buttons: initiate → complete */}
+            {!activePendingSession ? (
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={handleInitiate}
+                disabled={verifyMutation.isPending}
+                className="w-full bg-primary text-primary-foreground rounded-2xl py-3 font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors disabled:opacity-60"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                {verifyMutation.isPending ? "Starting session…" : "Find an Orb Location"}
+                <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+              </motion.button>
+            ) : (
+              <div className="space-y-2">
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleComplete}
+                  disabled={completeMutation.isPending}
+                  className="w-full bg-green-600 text-white rounded-2xl py-3 font-bold text-sm flex items-center justify-center gap-2 hover:bg-green-700 transition-colors disabled:opacity-60"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  {completeMutation.isPending ? "Completing…" : "Complete Verification"}
+                </motion.button>
+                <button
+                  onClick={() => { setPendingSessionId(null); verifyMutation.reset(); }}
+                  className="w-full text-xs text-muted-foreground underline underline-offset-2 py-1"
+                >
+                  Cancel / start new session
+                </button>
               </div>
             )}
-
-            <motion.button
-              whileTap={{ scale: 0.97 }}
-              onClick={handleVerify}
-              disabled={verifyMutation.isPending}
-              className="w-full mt-4 bg-primary text-primary-foreground rounded-2xl py-3 font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors disabled:opacity-60"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              {verifyMutation.isPending ? "Initiating..." :
-               verifyMutation.isSuccess ? "Session Started!" :
-               "Find an Orb Location"}
-              <ExternalLink className="w-3.5 h-3.5 opacity-70" />
-            </motion.button>
           </motion.div>
         )}
 

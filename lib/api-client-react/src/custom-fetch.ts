@@ -360,10 +360,22 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  // Always send cookies (session-based auth uses HttpOnly cookies).
+  // `same-origin` is the browser default but we set it explicitly so
+  // non-browser runtimes (e.g. Node.js 18 fetch) also include cookies.
+  const credentialsMode = (init.credentials ?? "include") as RequestCredentials;
+
+  const response = await fetch(input, { ...init, method, headers, credentials: credentialsMode });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);
+
+    // Fire a global event so auth-aware UI can react without coupling
+    // every hook to auth state (e.g. redirect to login on 401).
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("auth:unauthorized", { detail: { url: requestInfo.url } }));
+    }
+
     throw new ApiError(response, errorData, requestInfo);
   }
 

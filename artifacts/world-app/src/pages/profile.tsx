@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/auth";
 
 function formatUsd(val: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(val);
@@ -14,12 +15,23 @@ export default function Profile() {
   const { data: identity, isLoading } = useGetIdentity();
   const { data: wallet } = useGetWallet();
   const { data: summary } = useGetTransactionSummary();
+  const { signOut } = useAuth();
   const [copied, setCopied] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await signOut();
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   const settingsGroups = [
@@ -138,7 +150,7 @@ export default function Profile() {
                   className="w-full flex items-center gap-3 p-4 hover:bg-muted/20 transition-colors text-left"
                 >
                   <div className="w-9 h-9 rounded-xl bg-muted/40 flex items-center justify-center flex-shrink-0">
-                    <item.icon className="w-4.5 h-4.5 text-muted-foreground" />
+                    <item.icon className="w-4 h-4 text-muted-foreground" />
                   </div>
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-foreground">{item.label}</p>
@@ -157,10 +169,12 @@ export default function Profile() {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
           whileTap={{ scale: 0.98 }}
-          className="w-full flex items-center justify-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl py-3.5 font-semibold text-sm hover:bg-red-500/15 transition-all"
+          onClick={handleSignOut}
+          disabled={signingOut}
+          className="w-full flex items-center justify-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl py-3.5 font-semibold text-sm hover:bg-red-500/15 transition-all disabled:opacity-60"
         >
           <LogOut className="w-4 h-4" />
-          Sign Out
+          {signingOut ? "Signing out…" : "Sign Out"}
         </motion.button>
 
         <p className="text-center text-xs text-muted-foreground/50 pb-4">

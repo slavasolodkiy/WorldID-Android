@@ -1,0 +1,54 @@
+You are the senior implementation agent for repository: slavasolodkiy/WorldID-Android (branch main).
+
+Objective
+Converge Android upward to Apple-level rigor for:
+- auth/session integrity
+- verification lifecycle correctness
+- wallet/transaction correctness
+
+Product role of this repo
+Android is a first-class client that must match Apple’s core domain invariants, while preserving Android-specific UX/platform patterns.
+
+Architectural direction
+Use Apple as the temporary reference model for core lifecycle/state behavior. Close correctness gaps first, polish second.
+
+Inspect first
+- AGENTS.md
+- reports/final-audit.md
+- docs/reuse-readiness-report.md (if present)
+- auth/session storage/interceptor/login/logout modules
+- verification flow/state machine/screens/viewmodels/repositories
+- wallet/transaction repositories/use-cases/network calls
+- API DTOs/mappers/error envelopes
+- local DB schema/migrations (if present)
+- test coverage for auth/verification/transactions
+
+Concrete tasks
+1) Remove fallback identity/demo auth behavior from production paths.
+2) Enforce strict user scoping for stats, verification status, and transaction views.
+3) Align verification lifecycle with Apple reference (start/proof/complete/status consistency).
+4) Prevent partial verification completion when proof/session/user linkage is invalid.
+5) Improve transaction safety assumptions (idempotent request handling + duplicate action protection in client flow).
+6) Normalize naming/schema mismatches versus Apple and backend contract.
+7) Harden loading/error/empty/retry states around auth, verification, and wallet screens.
+8) Add targeted tests around lifecycle and edge cases.
+
+Hard constraints (must follow)
+- Do NOT create or modify any CLI file (critical Replit/GitHub export bug).
+- Do NOT create or modify .github/workflows/*.
+- Do NOT break Android-specific useful domains (e.g., grants/mini-app areas) unless they violate correctness.
+- Avoid broad refactors; focus on high-impact correctness changes.
+
+Acceptance criteria
+- Android core auth/verification/transaction behavior matches Apple-level invariants.
+- No fallback/demo auth assumptions remain in critical paths.
+- Naming/DTO/state mismatches are reduced and documented.
+- Existing local checks/type/lint/tests pass where scripts exist.
+- Final report includes file-by-file changes + remaining gap list vs Apple.
+
+Prioritized implementation plan
+1) Map Apple reference invariants to Android gaps.
+2) Fix auth/session and verification integrity first.
+3) Fix transaction correctness and duplicate-action handling.
+4) Align DTO/state naming and error handling.
+5) Run checks and publish a concrete delta report.
